@@ -1,7 +1,6 @@
-use std::hash::BuildHasher;
-use std::iter::DoubleEndedIterator;
-
+use either::Either;
 use fasthash::murmur3::Murmur3_x86_32;
+use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
 use perfect_hash::PerfectHasher32;
 use wu_diff::*;
 
@@ -18,12 +17,9 @@ impl LineDiff for &str {
         let old = self.lines();
         let new = new.lines();
 
-        let mut old_len = 0;
-        let mut new_len = 0;
-
         let (fw_eq_thru, fw) = {
-            let mut fw = old.clone().zip(new.clone()).enumerate();
-            let mut pre: Option<(usize, (&str, &str))> = None;
+            let mut fw = old.clone().zip_longest(new.clone()).enumerate();
+            let mut pre: Option<(usize, EitherOrBoth<&str, &str>)> = None;
 
             loop {
                 match fw.next() {
@@ -34,21 +30,36 @@ impl LineDiff for &str {
                             break (None, fw);
                         }
                     }
-                    Some((i, (o, n))) => {
+                    Some((i, Both(o, n))) => {
+                        pre = Some((i, Both(o, n)));
+
                         if o == n {
-                            pre = Some((i, (o, n)));
                             continue;
                         } else {
                             break (pre, fw);
                         }
                     }
+                    m => break (m, fw),
                 }
             }
         };
 
+        if fw_eq_thru.is_none() {
+            // both old and new are empty
+            return vec![];
+        }
+
+        let fw_eq_thru = fw_eq_thru.unwrap();
+
+        if fw_eq_thru.1.is_left() || fw_eq_thru.1.is_right() {
+            // TODO keep track of length individually.
+            // return added overall fw.next
+            unimplemented!()
+        }
+
         let (bw_eq_thru, bw) = {
-            let mut bw = old.rev().zip(new.rev()).enumerate();
-            let mut pre: Option<(usize, (&str, &str))> = None;
+            let mut bw = old.rev().zip_longest(new.rev()).enumerate();
+            let mut pre: Option<(usize, EitherOrBoth<&str, &str>)> = None;
 
             loop {
                 match bw.next() {
@@ -59,24 +70,42 @@ impl LineDiff for &str {
                             break (None, bw);
                         }
                     }
-                    Some((i, (o, n))) => {
+                    Some((i, Both(o, n))) => {
+                        pre = Some((i, Both(o, n)));
+
                         if o == n {
-                            pre = Some((i, (o, n)));
                             continue;
                         } else {
                             break (pre, bw);
                         }
                     }
+                    m => break (m, bw),
                 }
             }
         };
 
-        // TODO use ziplongest from itertools
-        if fw_eq_thru >= bw_eq_thru {
-            // fw.take_while(|s| )
+        // Early branch return proved non zero length of either old or new.
+        // Hence we can unwrap safely.
+        let bw_eq_thru = bw_eq_thru.unwrap();
+
+        if fw_eq_thru.0 >= bw_eq_thru.0 {
             unimplemented!()
         } else {
             unimplemented!()
+        }
+    }
+}
+
+trait FromEOB<L, R> {
+    fn into_either(self) -> Option<Either<L, R>>;
+}
+
+impl<L, R> FromEOB<L, R> for EitherOrBoth<L, R> {
+    fn into_either(self) -> Option<Either<L, R>> {
+        match self {
+            EitherOrBoth::Left(l) => Some(Either::Left(l)),
+            EitherOrBoth::Right(r) => Some(Either::Right(r)),
+            _ => None,
         }
     }
 }
