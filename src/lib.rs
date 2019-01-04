@@ -1,3 +1,6 @@
+use std::cmp::Ordering;
+use std::iter::once;
+
 use either::Either;
 use fasthash::murmur3::Murmur3_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
@@ -49,9 +52,9 @@ impl LineDiff for &str {
             return vec![];
         }
 
-        let fw_eq_thru = fw_eq_thru.unwrap();
+        let (fw_index, fw_item) = fw_eq_thru.unwrap();
 
-        if fw_eq_thru.1.is_left() || fw_eq_thru.1.is_right() {
+        if fw_item.is_just_left() || fw_item.is_just_right() {
             // TODO keep track of length individually.
             // return added overall fw.next
             unimplemented!()
@@ -86,9 +89,60 @@ impl LineDiff for &str {
 
         // Early branch return proved non zero length of either old or new.
         // Hence we can unwrap safely.
-        let bw_eq_thru = bw_eq_thru.unwrap();
+        let (bw_index, bw_item) = bw_eq_thru.unwrap();
 
-        if fw_eq_thru.0 >= bw_eq_thru.0 {
+        // overlapping case
+        // aba
+        // ababa
+
+        if fw_index >= bw_index {
+            let fw = once((fw_index, fw_item.clone())).chain(fw);
+
+            // unwrap is safe due to early return if is_left or is_right
+            let fw_fst_nq = fw_item.as_ref().both().unwrap();
+            // unwrap is safe because if forward eq is longer then backward and is Both
+            // then bw both() is Some
+            let bw_fst_nq = bw_item.both().unwrap();
+
+            // if eq segments are overlapping
+            if fw_fst_nq.0.as_ptr() >= bw_fst_nq.0.as_ptr()
+                || fw_fst_nq.1.as_ptr() >= bw_fst_nq.1.as_ptr()
+            {
+                // fw.map(|(_, z)| z);
+                unimplemented!()
+            }
+
+            // old: "abc"
+            // new: "ab-bc"
+
+            let mut shorter_len = None;
+            fw.take_while(|(i, e)| {
+                let mut not_greater = |a: &str, b: *const u8| match a.as_ptr().cmp(&b) {
+                    Ordering::Less => true,
+                    Ordering::Greater => false,
+                    Ordering::Equal => {
+                        if shorter_len.is_none() {
+                            shorter_len = Some(i + bw_index + 2)
+                        };
+                        false
+                    }
+                };
+
+                let not_past_back_matched = e
+                    .as_ref()
+                    .map_left(|a| not_greater(a, bw_fst_nq.0.as_ptr()))
+                    .map_right(|b| not_greater(b, bw_fst_nq.1.as_ptr()))
+                    .reduce(|a, b| a && b);
+
+                if not_past_back_matched {
+                    true
+                } else {
+                    // Stop when backwards equal set <= then remainder of smaller side (old/new).
+                    shorter_len.map_or(true, |len| fw_index <= (len - i) + 1)
+                }
+            })
+            .collect::<Vec<_>>(); // TODO into perfect_hash and vec<hash>
+
             unimplemented!()
         } else {
             unimplemented!()
