@@ -11,12 +11,24 @@ trait HashDiff<T, I, D> {
     fn hash_diff_vec(self, new: I) -> Vec<D>;
 }
 
-trait LineDiff {
-    fn lines_hash_diff(self, new: &str) -> Vec<DiffResult>;
+trait LineDiff<'l> {
+    fn lines_hash_diff(
+        self,
+        new: &'l str,
+    ) -> (
+        Vec<DiffResult>,
+        PerfectHasher32<&'l str, Murmur3Hasher_x86_32>,
+    );
 }
 
-impl LineDiff for &str {
-    fn lines_hash_diff(self, new: &str) -> Vec<DiffResult> {
+impl<'l> LineDiff<'l> for &'l str {
+    fn lines_hash_diff(
+        self,
+        new: &'l str,
+    ) -> (
+        Vec<DiffResult>,
+        PerfectHasher32<&'l str, Murmur3Hasher_x86_32>,
+    ) {
         let old = self.lines();
         let new = new.lines();
 
@@ -49,7 +61,7 @@ impl LineDiff for &str {
 
         if fw_eq_thru.is_none() {
             // both old and new are empty
-            return vec![];
+            return (vec![], PerfectHasher32::default());
         }
 
         let (fw_index, fw_item) = fw_eq_thru.unwrap();
@@ -142,7 +154,7 @@ impl LineDiff for &str {
                     shorter_len.map_or(true, |len| fw_index <= (len - i) + 1)
                 }
             });
-            let mut ph = PerfectHasher32::new(Murmur3Hasher_x86_32::default());
+            let mut ph = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
@@ -152,7 +164,7 @@ impl LineDiff for &str {
             }
 
             // Return diffed result
-            wu_diff::diff(&changed_old, &changed_new)
+            (wu_diff::diff(&changed_old, &changed_new), ph)
         } else {
             let bw = once((bw_index, bw_item.clone())).chain(bw);
 
@@ -165,7 +177,7 @@ impl LineDiff for &str {
             }
 
             // old: "abc"
-            // new: "ab-bc"
+            // new: "ab-abc"
 
             let changed = bw.take_while(|(i, e)| {
                 let mut not_greater = |a: &str, b: *const u8| match a.as_ptr().cmp(&b) {
@@ -192,7 +204,7 @@ impl LineDiff for &str {
                     shorter_len.map_or(true, |len| bw_index <= (len - i) + 1)
                 }
             });
-            let mut ph = PerfectHasher32::new(Murmur3Hasher_x86_32::default());
+            let mut ph = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
@@ -204,7 +216,7 @@ impl LineDiff for &str {
             changed_new.reverse();
             changed_old.reverse();
             // Return diffed result
-            wu_diff::diff(&changed_old, &changed_new)
+            (wu_diff::diff(&changed_old, &changed_new), ph)
         }
     }
 }
