@@ -66,10 +66,29 @@ impl<'l> LineDiff<'l> for &'l str {
 
         let (fw_index, fw_item) = fw_eq_thru.unwrap();
 
-        if fw_item.is_just_left() || fw_item.is_just_right() {
-            // TODO keep track of length individually.
+        if fw_item.is_just_left() {
             // return added overall fw.next
-            unimplemented!()
+            let mut ph = PerfectHasher32::default();
+
+            let mut changed_old = Vec::with_capacity(100);
+            let mut changed_new = vec![];
+            for (_, e) in fw {
+                let l = e.left().unwrap();
+                changed_old.push(ph.unique_id(l))
+            }
+
+            return (wu_diff::diff(&changed_old, &changed_new), ph);
+        } else if fw_item.is_just_right() {
+            let mut ph = PerfectHasher32::default();
+
+            let mut changed_old = vec![];
+            let mut changed_new = Vec::with_capacity(100);
+            for (_, e) in fw {
+                let l = e.right().unwrap();
+                changed_new.push(ph.unique_id(l))
+            }
+
+            return (wu_diff::diff(&changed_old, &changed_new), ph);
         }
 
         let (bw_eq_thru, bw) = {
@@ -122,8 +141,15 @@ impl<'l> LineDiff<'l> for &'l str {
             if fw_fst_nq.0.as_ptr() >= bw_fst_nq.0.as_ptr()
                 || fw_fst_nq.1.as_ptr() >= bw_fst_nq.1.as_ptr()
             {
-                // fw.map(|(_, z)| z);
-                unimplemented!()
+                let mut ph = PerfectHasher32::default();
+
+                let mut changed_old = Vec::with_capacity(100);
+                let mut changed_new = Vec::with_capacity(100);
+                for (_, e) in fw {
+                    e.map_left(|l| changed_old.push(ph.unique_id(l)))
+                        .map_right(|r| changed_new.push(ph.unique_id(r)));
+                }
+                return (wu_diff::diff(&changed_old, &changed_new), ph);
             }
 
             // old: "abc"
@@ -154,6 +180,7 @@ impl<'l> LineDiff<'l> for &'l str {
                     shorter_len.map_or(true, |len| fw_index <= (len - i) + 1)
                 }
             });
+
             let mut ph = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
@@ -167,14 +194,6 @@ impl<'l> LineDiff<'l> for &'l str {
             (wu_diff::diff(&changed_old, &changed_new), ph)
         } else {
             let bw = once((bw_index, bw_item.clone())).chain(bw);
-
-            // if eq segments are overlapping
-            if bw_fst_nq.0.as_ptr() >= fw_fst_nq.0.as_ptr()
-                || bw_fst_nq.1.as_ptr() >= fw_fst_nq.1.as_ptr()
-            {
-                // fw.map(|(_, z)| z);
-                unimplemented!()
-            }
 
             // old: "abc"
             // new: "ab-abc"
