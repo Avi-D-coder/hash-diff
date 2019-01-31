@@ -1,34 +1,33 @@
 use std::cmp::Ordering;
+use std::fmt::Display;
 use std::iter::once;
+use std::ops::Index;
 
 use either::Either;
 use fasthash::murmur3::Murmur3Hasher_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
-use perfect_hash::PerfectHasher32;
-use wu_diff::*;
+use perfect_hash::{Id, PerfectHasher32};
 
 trait HashDiff<T, I, D> {
     fn hash_diff_vec(self, new: I) -> Vec<D>;
 }
 
-trait LineDiff<'l> {
-    fn lines_hash_diff(
-        self,
-        new: &'l str,
-    ) -> (
-        Vec<DiffResult>,
-        PerfectHasher32<&'l str, Murmur3Hasher_x86_32>,
-    );
+type IndexMapping<'l> = PerfectHasher32<&'l str, Murmur3Hasher_x86_32>;
+
+struct HashedLines<'l> {
+    index_map: IndexMapping<'l>,
+    changed_old: Vec<Id<u32>>,
+    changed_new: Vec<Id<u32>>,
 }
 
+trait LineDiff<'l> {
+    fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines>;
+}
+
+// impl<'l> Display for Diff<'l> {}
+
 impl<'l> LineDiff<'l> for &'l str {
-    fn lines_hash_diff(
-        self,
-        new: &'l str,
-    ) -> (
-        Vec<DiffResult>,
-        PerfectHasher32<&'l str, Murmur3Hasher_x86_32>,
-    ) {
+    fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines> {
         let old = self.lines();
         let new = new.lines();
 
@@ -61,34 +60,42 @@ impl<'l> LineDiff<'l> for &'l str {
 
         if fw_eq_thru.is_none() {
             // both old and new are empty
-            return (vec![], PerfectHasher32::default());
+            return None;
         }
 
         let (fw_index, fw_item) = fw_eq_thru.unwrap();
 
         if fw_item.is_just_left() {
             // return added overall fw.next
-            let mut ph = PerfectHasher32::default();
+            let mut index_map = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = vec![];
             for (_, e) in fw {
                 let l = e.left().unwrap();
-                changed_old.push(ph.unique_id(l))
+                changed_old.push(index_map.unique_id(l))
             }
 
-            return (wu_diff::diff(&changed_old, &changed_new), ph);
+            return Some(HashedLines {
+                changed_old,
+                changed_new,
+                index_map,
+            });
         } else if fw_item.is_just_right() {
-            let mut ph = PerfectHasher32::default();
+            let mut index_map = PerfectHasher32::default();
 
             let mut changed_old = vec![];
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in fw {
                 let l = e.right().unwrap();
-                changed_new.push(ph.unique_id(l))
+                changed_new.push(index_map.unique_id(l))
             }
 
-            return (wu_diff::diff(&changed_old, &changed_new), ph);
+            return Some(HashedLines {
+                changed_old,
+                changed_new,
+                index_map,
+            });
         }
 
         let (bw_eq_thru, bw) = {
@@ -141,15 +148,19 @@ impl<'l> LineDiff<'l> for &'l str {
             if fw_fst_nq.0.as_ptr() >= bw_fst_nq.0.as_ptr()
                 || fw_fst_nq.1.as_ptr() >= bw_fst_nq.1.as_ptr()
             {
-                let mut ph = PerfectHasher32::default();
+                let mut index_map = PerfectHasher32::default();
 
                 let mut changed_old = Vec::with_capacity(100);
                 let mut changed_new = Vec::with_capacity(100);
                 for (_, e) in fw {
-                    e.map_left(|l| changed_old.push(ph.unique_id(l)))
-                        .map_right(|r| changed_new.push(ph.unique_id(r)));
+                    e.map_left(|l| changed_old.push(index_map.unique_id(l)))
+                        .map_right(|r| changed_new.push(index_map.unique_id(r)));
                 }
-                return (wu_diff::diff(&changed_old, &changed_new), ph);
+                return Some(HashedLines {
+                    changed_old,
+                    changed_new,
+                    index_map,
+                });
             }
 
             // old: "abc"
@@ -181,17 +192,21 @@ impl<'l> LineDiff<'l> for &'l str {
                 }
             });
 
-            let mut ph = PerfectHasher32::default();
+            let mut index_map = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in changed {
-                e.map_left(|l| changed_old.push(ph.unique_id(l)))
-                    .map_right(|r| changed_new.push(ph.unique_id(r)));
+                e.map_left(|l| changed_old.push(index_map.unique_id(l)))
+                    .map_right(|r| changed_new.push(index_map.unique_id(r)));
             }
 
             // Return diffed result
-            (wu_diff::diff(&changed_old, &changed_new), ph)
+            return Some(HashedLines {
+                changed_old,
+                changed_new,
+                index_map,
+            });
         } else {
             let bw = once((bw_index, bw_item.clone())).chain(bw);
 
@@ -223,19 +238,23 @@ impl<'l> LineDiff<'l> for &'l str {
                     shorter_len.map_or(true, |len| bw_index <= (len - i) + 1)
                 }
             });
-            let mut ph = PerfectHasher32::default();
+            let mut index_map = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in changed {
-                e.map_left(|l| changed_old.push(ph.unique_id(l)))
-                    .map_right(|r| changed_new.push(ph.unique_id(r)));
+                e.map_left(|l| changed_old.push(index_map.unique_id(l)))
+                    .map_right(|r| changed_new.push(index_map.unique_id(r)));
             }
 
             changed_new.reverse();
             changed_old.reverse();
             // Return diffed result
-            (wu_diff::diff(&changed_old, &changed_new), ph)
+            return Some(HashedLines {
+                changed_old,
+                changed_new,
+                index_map,
+            });
         }
     }
 }
