@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{max, Ordering};
 use std::fmt::Display;
 use std::iter::once;
 use std::ops::Index;
@@ -19,6 +19,86 @@ struct HashedLines<'l> {
     changed_old: Vec<Id<u32>>,
     changed_new: Vec<Id<u32>>,
 }
+
+#[derive(Debug, Clone)]
+pub enum Change<T> {
+    Equal {
+        old_index: usize,
+        new: T,
+        new_index: usize,
+        len: usize,
+    },
+    Delete {
+        old: T,
+        old_index: usize,
+        len: usize,
+    },
+    Insert {
+        old: T,
+        old_index: usize,
+        old_len: usize,
+        new: T,
+        new_index: usize,
+        new_len: usize,
+    },
+    Replace {
+        old: T,
+        old_index: usize,
+        old_len: usize,
+        new: T,
+        new_index: usize,
+        new_len: usize,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct Changes<T> {
+    diff: Vec<Change<T>>,
+}
+
+impl<T> From<Vec<Change<T>>> for Changes<T> {
+    fn from(diff: Vec<Change<T>>) -> Changes<T> {
+        Changes { diff }
+    }
+}
+
+impl<T> Into<Vec<Change<T>>> for Changes<T> {
+    fn into(self) -> Vec<Change<T>> {
+        self.diff
+    }
+}
+
+struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<T>);
+
+impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
+    type Error = ();
+    fn equal(&mut self, old_index: usize, new_index: usize, len: usize) -> Result<(), ()> {
+        let ChangesBuilder(hashed, changes) = self;
+        let new = hashed.index_map[hashed.changed_new[new_index]];
+        changes.diff.push(Change::Equal {
+            new,
+            new_index,
+            old_index,
+            len,
+        });
+        Ok(())
+    }
+}
+
+// impl<'l> HashedLines<'l> {
+//     pub fn myers_diff_vec(&self) -> Vec<&'l str> {
+//         let mut d = Vec::with_capacity(max(self.changed_new.len(), self.changed_old.len()));
+//         diffs::myers::diff(
+//             &mut d,
+//             self.changed_old,
+//             0,
+//             self.changed_old.len(),
+//             self.changed_new,
+//             0,
+//             self.changed_new.len(),
+//         )
+//     }
+// }
 
 trait LineDiff<'l> {
     fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines>;
@@ -70,7 +150,7 @@ impl<'l> LineDiff<'l> for &'l str {
             let mut index_map = PerfectHasher32::default();
 
             let mut changed_old = Vec::with_capacity(100);
-            let mut changed_new = vec![];
+            let changed_new = vec![];
             for (_, e) in fw {
                 let l = e.left().unwrap();
                 changed_old.push(index_map.unique_id(l))
@@ -84,7 +164,7 @@ impl<'l> LineDiff<'l> for &'l str {
         } else if fw_item.is_just_right() {
             let mut index_map = PerfectHasher32::default();
 
-            let mut changed_old = vec![];
+            let changed_old = vec![];
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in fw {
                 let l = e.right().unwrap();
