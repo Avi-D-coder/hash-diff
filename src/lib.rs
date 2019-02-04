@@ -36,7 +36,6 @@ pub enum Change<T> {
     Insert {
         old: T,
         old_index: usize,
-        old_len: usize,
         new: T,
         new_index: usize,
         new_len: usize,
@@ -80,6 +79,53 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
             new_index,
             old_index,
             len,
+        });
+        Ok(())
+    }
+
+    fn delete(&mut self, old_index: usize, len: usize) -> Result<(), ()> {
+        let ChangesBuilder(hashed, changes) = self;
+        let old = hashed.index_map[hashed.changed_old[old_index]];
+        changes.diff.push(Change::Delete {
+            old,
+            old_index,
+            len,
+        });
+        Ok(())
+    }
+
+    fn insert(&mut self, old_index: usize, new_index: usize, new_len: usize) -> Result<(), ()> {
+        let ChangesBuilder(hashed, changes) = self;
+        let old = hashed.index_map[hashed.changed_old[old_index]];
+        let new = hashed.index_map[hashed.changed_new[new_index]];
+        changes.diff.push(Change::Insert {
+            old,
+            old_index,
+            new,
+            new_index,
+            new_len,
+        });
+        Ok(())
+    }
+
+    fn replace(
+        &mut self,
+        old_index: usize,
+        old_len: usize,
+        new_index: usize,
+        new_len: usize,
+    ) -> Result<(), ()> {
+        let ChangesBuilder(hashed, changes) = self;
+        // TODO old/new should be Vec not just the first element
+        let old = hashed.index_map[hashed.changed_old[old_index]];
+        let new = hashed.index_map[hashed.changed_new[new_index]];
+        changes.diff.push(Change::Replace {
+            old,
+            old_index,
+            old_len,
+            new,
+            new_index,
+            new_len,
         });
         Ok(())
     }
