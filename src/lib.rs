@@ -34,7 +34,6 @@ pub enum Change<T> {
         len: usize,
     },
     Insert {
-        old: T,
         old_index: usize,
         new: T,
         new_index: usize,
@@ -67,13 +66,17 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
     }
 }
 
-struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<T>);
+struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<Vec<T>>);
 
 impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     type Error = ();
     fn equal(&mut self, old_index: usize, new_index: usize, len: usize) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
-        let new = hashed.index_map[hashed.changed_new[new_index]];
+        let new: Vec<&str> = hashed
+            .index_map
+            .contents(hashed.changed_new[new_index..new_index + len].iter())
+            .map(|s| *s)
+            .collect();
         changes.diff.push(Change::Equal {
             new,
             new_index,
@@ -85,7 +88,11 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
 
     fn delete(&mut self, old_index: usize, len: usize) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
-        let old = hashed.index_map[hashed.changed_old[old_index]];
+        let old = hashed
+            .index_map
+            .contents(hashed.changed_old[old_index..old_index + len - 1].iter())
+            .map(|s| *s)
+            .collect();
         changes.diff.push(Change::Delete {
             old,
             old_index,
@@ -96,10 +103,12 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
 
     fn insert(&mut self, old_index: usize, new_index: usize, new_len: usize) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
-        let old = hashed.index_map[hashed.changed_old[old_index]];
-        let new = hashed.index_map[hashed.changed_new[new_index]];
+        let new: Vec<&str> = hashed
+            .index_map
+            .contents(hashed.changed_new[new_index..new_index + new_len].iter())
+            .map(|s| *s)
+            .collect();
         changes.diff.push(Change::Insert {
-            old,
             old_index,
             new,
             new_index,
@@ -117,8 +126,16 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     ) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
         // TODO old/new should be Vec not just the first element
-        let old = hashed.index_map[hashed.changed_old[old_index]];
-        let new = hashed.index_map[hashed.changed_new[new_index]];
+        let old: Vec<&str> = hashed
+            .index_map
+            .contents(hashed.changed_old[old_index..old_index + old_len].iter())
+            .map(|s| *s)
+            .collect();
+        let new: Vec<&str> = hashed
+            .index_map
+            .contents(hashed.changed_new[new_index..new_index + new_len].iter())
+            .map(|s| *s)
+            .collect();
         changes.diff.push(Change::Replace {
             old,
             old_index,
