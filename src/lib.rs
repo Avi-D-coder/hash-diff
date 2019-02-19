@@ -1,7 +1,6 @@
 use std::cmp::{max, Ordering};
 use std::fmt::Display;
 use std::iter::once;
-use std::ops::Index;
 
 use either::Either;
 use fasthash::murmur3::Murmur3Hasher_x86_32;
@@ -14,7 +13,7 @@ trait HashDiff<T, I, D> {
 
 type IndexMapping<'l> = PerfectHasher32<&'l str, Murmur3Hasher_x86_32>;
 
-struct HashedLines<'l> {
+pub struct HashedLines<'l> {
     index_map: IndexMapping<'l>,
     changed_old: Vec<Id<u32>>,
     changed_new: Vec<Id<u32>>,
@@ -66,7 +65,7 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
     }
 }
 
-struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<Vec<T>>);
+pub struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<Vec<T>>);
 
 impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     type Error = ();
@@ -148,20 +147,23 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     }
 }
 
-// impl<'l> HashedLines<'l> {
-//     pub fn myers_diff_vec(&self) -> Vec<&'l str> {
-//         let mut d = Vec::with_capacity(max(self.changed_new.len(), self.changed_old.len()));
-//         diffs::myers::diff(
-//             &mut d,
-//             self.changed_old,
-//             0,
-//             self.changed_old.len(),
-//             self.changed_new,
-//             0,
-//             self.changed_new.len(),
-//         )
-//     }
-// }
+impl<'l> HashedLines<'l> {
+    pub fn myers_diff_vec(self) -> Vec<Change<Vec<&'l str>>> {
+        let diff = Vec::with_capacity(max(self.changed_new.len(), self.changed_old.len()));
+        let unsafe_self: &Self = unsafe { &*(&self as *const Self) };
+        let mut cb = ChangesBuilder(self, Changes { diff });
+        let _ = diffs::myers::diff(
+            &mut cb,
+            &unsafe_self.changed_old,
+            0,
+            unsafe_self.changed_old.len(),
+            &unsafe_self.changed_new,
+            0,
+            unsafe_self.changed_new.len(),
+        );
+        cb.1.diff
+    }
+}
 
 trait LineDiff<'l> {
     fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines>;
