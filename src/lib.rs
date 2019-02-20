@@ -162,13 +162,13 @@ impl<'l> HashedLines<'l> {
 }
 
 trait LineDiff<'l> {
-    fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines>;
+    fn hash_changed_lines(self, new: &'l str) -> Option<HashedLines>;
 }
 
 // impl<'l> Display for Diff<'l> {}
 
 impl<'l> LineDiff<'l> for &'l str {
-    fn lines_hash_diff(self, new: &'l str) -> Option<HashedLines> {
+    fn hash_changed_lines(self, new: &'l str) -> Option<HashedLines> {
         let old = self.lines();
         let new = new.lines();
 
