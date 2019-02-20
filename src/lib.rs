@@ -7,10 +7,6 @@ use fasthash::murmur3::Murmur3Hasher_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
 use perfect_hash::{Id, PerfectHasher32};
 
-trait HashDiff<T, I, D> {
-    fn hash_diff_vec(self, new: I) -> Vec<D>;
-}
-
 type IndexMapping<'l> = PerfectHasher32<&'l str, Murmur3Hasher_x86_32>;
 
 pub struct HashedLines<'l> {
