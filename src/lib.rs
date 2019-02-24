@@ -2,6 +2,7 @@ use std::cmp::{max, Ordering};
 use std::fmt::Display;
 use std::iter::once;
 
+pub use diffs;
 use either::Either;
 use fasthash::murmur3::Murmur3Hasher_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
@@ -60,6 +61,41 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
         self.diff
     }
 }
+
+// TODO blocked
+// pub struct Segment<'l> {
+//     pub index: usize,
+//     pub str: &'l str,
+// }
+
+// #[allow(unused_variables)]
+// trait HashDiff<'l>: Sized + LineDiff<'l> {
+//     type Error;
+//     fn equal(&mut self, segments: impl Iterator<Item = Segment<'l>>) -> Result<(), Self::Error> {
+//         Ok(())
+//     }
+//     fn delete(&mut self, segments: impl Iterator<Item = Segment<'l>>) -> Result<(), Self::Error> {
+//         Ok(())
+//     }
+//     fn insert(
+//         &mut self,
+//         old: Option<Segment<'l>>,
+//         segments: impl Iterator<Item = Segment<'l>>,
+//     ) -> Result<(), Self::Error> {
+//         Ok(())
+//     }
+//     fn replace(
+//         &mut self,
+//         mut old: impl Iterator<Item = Segment<'l>> + Clone,
+//         new: impl Iterator<Item = Segment<'l>>,
+//     ) -> Result<(), Self::Error> {
+//         self.delete(old.clone())?;
+//         self.insert(old.next(), new)
+//     }
+//     fn finish(&mut self) -> Result<(), Self::Error> {
+//         Ok(())
+//     }
+// }
 
 pub struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<Vec<T>>);
 
@@ -161,7 +197,7 @@ impl<'l> HashedLines<'l> {
     }
 }
 
-trait LineDiff<'l> {
+pub trait LineDiff<'l> {
     fn hash_changed_lines(self, new: &'l str) -> Option<HashedLines>;
 }
 
