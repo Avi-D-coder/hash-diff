@@ -65,40 +65,71 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
     }
 }
 
-// TODO blocked
-// pub struct Segment<'l> {
-//     pub index: usize,
-//     pub str: &'l str,
-// }
+pub struct Segment<T> {
+    pub index: usize,
+    pub seg: T,
+}
 
-// #[allow(unused_variables)]
-// trait HashDiff<'l>: Sized + HashDiff<'l> {
-//     type Error;
-//     fn equal(&mut self, segments: impl Iterator<Item = Segment<'l>>) -> Result<(), Self::Error> {
-//         Ok(())
-//     }
-//     fn delete(&mut self, segments: impl Iterator<Item = Segment<'l>>) -> Result<(), Self::Error> {
-//         Ok(())
-//     }
-//     fn insert(
-//         &mut self,
-//         old: Option<Segment<'l>>,
-//         segments: impl Iterator<Item = Segment<'l>>,
-//     ) -> Result<(), Self::Error> {
-//         Ok(())
-//     }
-//     fn replace(
-//         &mut self,
-//         mut old: impl Iterator<Item = Segment<'l>> + Clone,
-//         new: impl Iterator<Item = Segment<'l>>,
-//     ) -> Result<(), Self::Error> {
-//         self.delete(old.clone())?;
-//         self.insert(old.next(), new)
-//     }
-//     fn finish(&mut self) -> Result<(), Self::Error> {
-//         Ok(())
-//     }
-// }
+#[allow(unused_variables)]
+trait Diff: Sized {
+    type Error;
+    type Seg;
+    fn equal(&mut self, segments: impl Iterator<Item = Segment<Self::Seg>>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn delete(&mut self, segments: impl Iterator<Item = Segment<Self::Seg>>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn insert(
+        &mut self,
+        old: Option<Segment<Self::Seg>>,
+        segments: impl Iterator<Item = Segment<Self::Seg>>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn replace(
+        &mut self,
+        mut old: impl Iterator<Item = Segment<Self::Seg>> + Clone,
+        new: impl Iterator<Item = Segment<Self::Seg>>,
+    ) -> Result<(), Self::Error> {
+        self.delete(old.clone())?;
+        self.insert(old.next(), new)
+    }
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl<T, D> diffs::Diff for D
+where
+    D: Diff<Error = (), Seg = T> + !diffs::Diff,
+{
+    type Error = ();
+    fn equal(&mut self, segments: impl Iterator<Item = Segment<T>>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn delete(&mut self, segments: impl Iterator<Item = Segment<T>>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn insert(
+        &mut self,
+        old: Option<Segment<T>>,
+        segments: impl Iterator<Item = Segment<T>>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn replace(
+        &mut self,
+        mut old: impl Iterator<Item = Segment<T>> + Clone,
+        new: impl Iterator<Item = Segment<T>>,
+    ) -> Result<(), Self::Error> {
+        self.delete(old.clone())?;
+        self.insert(old.next(), new)
+    }
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 pub struct ChangesBuilder<T>(Hashed<T>, Changes<Vec<T>>);
 
