@@ -1,5 +1,8 @@
+use std::cmp::Ord;
 use std::cmp::{max, Ordering};
-use std::fmt::Display;
+// TODO
+// use std::fmt::Display;
+use std::hash::Hash;
 use std::iter::once;
 
 pub use diffs;
@@ -8,10 +11,10 @@ use fasthash::murmur3::Murmur3Hasher_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
 use perfect_hash::{Id, PerfectHasher32};
 
-type IndexMapping<'l> = PerfectHasher32<&'l str, Murmur3Hasher_x86_32>;
+type IndexMapping<T> = PerfectHasher32<T, Murmur3Hasher_x86_32>;
 
-pub struct HashedLines<'l> {
-    index_map: IndexMapping<'l>,
+pub struct Hashed<T> {
+    index_map: IndexMapping<T>,
     changed_old: Vec<Id<u32>>,
     changed_new: Vec<Id<u32>>,
 }
@@ -69,7 +72,7 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
 // }
 
 // #[allow(unused_variables)]
-// trait HashDiff<'l>: Sized + LineDiff<'l> {
+// trait HashDiff<'l>: Sized + HashDiff<'l> {
 //     type Error;
 //     fn equal(&mut self, segments: impl Iterator<Item = Segment<'l>>) -> Result<(), Self::Error> {
 //         Ok(())
@@ -97,13 +100,16 @@ impl<T> Into<Vec<Change<T>>> for Changes<T> {
 //     }
 // }
 
-pub struct ChangesBuilder<'l, T>(HashedLines<'l>, Changes<Vec<T>>);
+pub struct ChangesBuilder<T>(Hashed<T>, Changes<Vec<T>>);
 
-impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
+impl<'l, T> diffs::Diff for ChangesBuilder<&'l T>
+where
+    T: Ord + Hash,
+{
     type Error = ();
     fn equal(&mut self, old_index: usize, new_index: usize, len: usize) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
-        let new: Vec<&str> = hashed
+        let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + len].iter())
             .map(|s| *s)
@@ -134,7 +140,7 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
 
     fn insert(&mut self, old_index: usize, new_index: usize, new_len: usize) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
-        let new: Vec<&str> = hashed
+        let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + new_len].iter())
             .map(|s| *s)
@@ -157,12 +163,12 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     ) -> Result<(), ()> {
         let ChangesBuilder(hashed, changes) = self;
         // TODO old/new should be Vec not just the first element
-        let old: Vec<&str> = hashed
+        let old = hashed
             .index_map
             .contents(hashed.changed_old[old_index..old_index + old_len].iter())
             .map(|s| *s)
             .collect();
-        let new: Vec<&str> = hashed
+        let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + new_len].iter())
             .map(|s| *s)
@@ -179,8 +185,11 @@ impl<'l> diffs::Diff for ChangesBuilder<'l, &'l str> {
     }
 }
 
-impl<'l> HashedLines<'l> {
-    pub fn myers_diff_vec(self) -> Vec<Change<Vec<&'l str>>> {
+impl<'l, T> Hashed<&'l T>
+where
+    T: Ord + Hash,
+{
+    pub fn myers_diff_vec(self) -> Vec<Change<Vec<&'l T>>> {
         let diff = Vec::with_capacity(max(self.changed_new.len(), self.changed_old.len()));
         let unsafe_self: &Self = unsafe { &*(&self as *const Self) };
         let mut cb = ChangesBuilder(self, Changes { diff });
@@ -197,14 +206,14 @@ impl<'l> HashedLines<'l> {
     }
 }
 
-pub trait LineDiff<'l> {
-    fn hash_changed_lines(self, new: &'l str) -> Option<HashedLines>;
+pub trait HashDiff<T> {
+    fn hash_changed_lines(self, new: T) -> Option<Hashed<T>>;
 }
 
 // impl<'l> Display for Diff<'l> {}
 
-impl<'l> LineDiff<'l> for &'l str {
-    fn hash_changed_lines(self, new: &'l str) -> Option<HashedLines> {
+impl<'l> HashDiff<&'l str> for &'l str {
+    fn hash_changed_lines(self, new: &'l str) -> Option<Hashed<&'l str>> {
         let old = self.lines();
         let new = new.lines();
 
@@ -253,7 +262,7 @@ impl<'l> LineDiff<'l> for &'l str {
                 changed_old.push(index_map.unique_id(l))
             }
 
-            return Some(HashedLines {
+            return Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
@@ -268,7 +277,7 @@ impl<'l> LineDiff<'l> for &'l str {
                 changed_new.push(index_map.unique_id(l))
             }
 
-            return Some(HashedLines {
+            return Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
@@ -333,7 +342,7 @@ impl<'l> LineDiff<'l> for &'l str {
                     e.map_left(|l| changed_old.push(index_map.unique_id(l)))
                         .map_right(|r| changed_new.push(index_map.unique_id(r)));
                 }
-                return Some(HashedLines {
+                return Some(Hashed {
                     changed_old,
                     changed_new,
                     index_map,
@@ -379,7 +388,7 @@ impl<'l> LineDiff<'l> for &'l str {
             }
 
             // Return diffed result
-            return Some(HashedLines {
+            return Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
@@ -427,7 +436,7 @@ impl<'l> LineDiff<'l> for &'l str {
             changed_new.reverse();
             changed_old.reverse();
             // Return diffed result
-            return Some(HashedLines {
+            return Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
