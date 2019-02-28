@@ -176,48 +176,58 @@ where
     }
 }
 
-pub trait Content {
-    type Iter: Iterator;
-    fn content(self) -> Self::Iter;
-}
+pub trait ContentPosition: Clone {
+    type Content: Ord + Hash + Clone;
+    fn content(&self) -> Self::Content;
 
-pub trait Position: Content {
     type Position: Ord;
     fn pos(&self) -> Self::Position;
 }
 
-impl<'l> Content for &'l str {
+pub trait Segments {
+    type Iter: DoubleEndedIterator<Item = Self::Segment> + Clone;
+    type Segment: ContentPosition;
+    fn segments(self) -> Self::Iter;
+}
+
+pub trait Position {}
+
+impl<'l> Segments for &'l str {
     type Iter = std::str::Lines<'l>;
-    fn content(self) -> std::str::Lines<'l> {
+    type Segment = &'l str;
+    fn segments(self) -> std::str::Lines<'l> {
         self.lines()
     }
 }
-impl<'l> Position for &'l str {
+impl<'l> ContentPosition for &'l str {
+    type Content = Self;
+    fn content(&self) -> Self {
+        self
+    }
+
     type Position = *const u8;
     fn pos(&self) -> *const u8 {
         self.as_ptr()
     }
 }
 
-pub trait HashChanged<O> {
+pub trait HashChanged<I, C> {
     type Item;
-    fn hash_changed(self, new: O) -> Option<Hashed<Self::Item>>;
+    fn hash_changed(self, new: I) -> Option<Hashed<C>>;
 }
 
 // impl<'l> Display for Diff<'l> {}
 
-impl<O, N, S> HashChanged<N> for O
+impl<O, N, S> HashChanged<N, S::Content> for O
 where
-    O: Content,
-    N: Content,
-    O::Iter: DoubleEndedIterator<Item = S> + Clone,
-    N::Iter: DoubleEndedIterator<Item = S> + Clone,
-    S: Ord + Hash + Clone + Position,
+    O: Segments<Segment = S>,
+    N: Segments<Segment = S>,
+    S: ContentPosition,
 {
     type Item = S;
-    fn hash_changed(self, new: N) -> Option<Hashed<S>> {
-        let old = self.content();
-        let new = new.content();
+    fn hash_changed(self, new: N) -> Option<Hashed<S::Content>> {
+        let old = self.segments();
+        let new = new.segments();
 
         let (fw_eq_thru, fw) = {
             let mut fw = old.clone().zip_longest(new.clone()).enumerate();
@@ -235,7 +245,7 @@ where
                     Some((i, Both(o, n))) => {
                         pre = Some((i, Both(o.clone(), n.clone())));
 
-                        if &o == &n {
+                        if o.content() == n.content() {
                             continue;
                         } else {
                             break (pre, fw);
@@ -261,7 +271,7 @@ where
             let changed_new = vec![];
             for (_, e) in fw {
                 let l = e.left().unwrap();
-                changed_old.push(index_map.unique_id(l))
+                changed_old.push(index_map.unique_id(l.content()))
             }
 
             return Some(Hashed {
@@ -276,7 +286,7 @@ where
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in fw {
                 let l = e.right().unwrap();
-                changed_new.push(index_map.unique_id(l))
+                changed_new.push(index_map.unique_id(l.content()))
             }
 
             return Some(Hashed {
@@ -302,7 +312,7 @@ where
                     Some((i, Both(o, n))) => {
                         pre = Some((i, Both(o.clone(), n.clone())));
 
-                        if o == n {
+                        if o.content() == n.content() {
                             continue;
                         } else {
                             break (pre, bw);
@@ -339,8 +349,8 @@ where
                 let mut changed_old = Vec::with_capacity(100);
                 let mut changed_new = Vec::with_capacity(100);
                 for (_, e) in fw {
-                    e.map_left(|l| changed_old.push(index_map.unique_id(l)))
-                        .map_right(|r| changed_new.push(index_map.unique_id(r)));
+                    e.map_left(|l| changed_old.push(index_map.unique_id(l.content())))
+                        .map_right(|r| changed_new.push(index_map.unique_id(r.content())));
                 }
                 return Some(Hashed {
                     changed_old,
@@ -386,8 +396,8 @@ where
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in changed {
-                e.map_left(|l| changed_old.push(index_map.unique_id(l)))
-                    .map_right(|r| changed_new.push(index_map.unique_id(r)));
+                e.map_left(|l| changed_old.push(index_map.unique_id(l.content())))
+                    .map_right(|r| changed_new.push(index_map.unique_id(r.content())));
             }
 
             // Return diffed result
@@ -435,8 +445,8 @@ where
             let mut changed_old = Vec::with_capacity(100);
             let mut changed_new = Vec::with_capacity(100);
             for (_, e) in changed {
-                e.map_left(|l| changed_old.push(index_map.unique_id(l)))
-                    .map_right(|r| changed_new.push(index_map.unique_id(r)));
+                e.map_left(|l| changed_old.push(index_map.unique_id(l.content())))
+                    .map_right(|r| changed_new.push(index_map.unique_id(r.content())));
             }
 
             changed_new.reverse();
