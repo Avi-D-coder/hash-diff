@@ -176,20 +176,52 @@ where
     }
 }
 
-pub trait HashDiff<T> {
-    fn hash_changed_lines(self, new: T) -> Option<Hashed<T>>;
+pub trait Content {
+    type Iter: Iterator;
+    fn content(self) -> Self::Iter;
+}
+
+pub trait Position: Content {
+    type Position: Ord;
+    fn pos(&self) -> Self::Position;
+}
+
+impl<'l> Content for &'l str {
+    type Iter = std::str::Lines<'l>;
+    fn content(self) -> std::str::Lines<'l> {
+        self.lines()
+    }
+}
+impl<'l> Position for &'l str {
+    type Position = *const u8;
+    fn pos(&self) -> *const u8 {
+        self.as_ptr()
+    }
+}
+
+pub trait HashChanged<O> {
+    type Item;
+    fn hash_changed(self, new: O) -> Option<Hashed<Self::Item>>;
 }
 
 // impl<'l> Display for Diff<'l> {}
 
-impl<'l> HashDiff<&'l str> for &'l str {
-    fn hash_changed_lines(self, new: &'l str) -> Option<Hashed<&'l str>> {
-        let old = self.lines();
-        let new = new.lines();
+impl<O, N, S> HashChanged<N> for O
+where
+    O: Content,
+    N: Content,
+    O::Iter: DoubleEndedIterator<Item = S> + Clone,
+    N::Iter: DoubleEndedIterator<Item = S> + Clone,
+    S: Ord + Hash + Clone + Position,
+{
+    type Item = S;
+    fn hash_changed(self, new: N) -> Option<Hashed<S>> {
+        let old = self.content();
+        let new = new.content();
 
         let (fw_eq_thru, fw) = {
             let mut fw = old.clone().zip_longest(new.clone()).enumerate();
-            let mut pre: Option<(usize, EitherOrBoth<&str, &str>)> = None;
+            let mut pre: Option<(usize, EitherOrBoth<S, S>)> = None;
 
             loop {
                 match fw.next() {
@@ -201,9 +233,9 @@ impl<'l> HashDiff<&'l str> for &'l str {
                         }
                     }
                     Some((i, Both(o, n))) => {
-                        pre = Some((i, Both(o, n)));
+                        pre = Some((i, Both(o.clone(), n.clone())));
 
-                        if o == n {
+                        if &o == &n {
                             continue;
                         } else {
                             break (pre, fw);
@@ -256,7 +288,7 @@ impl<'l> HashDiff<&'l str> for &'l str {
 
         let (bw_eq_thru, bw) = {
             let mut bw = old.rev().zip_longest(new.rev()).enumerate();
-            let mut pre: Option<(usize, EitherOrBoth<&str, &str>)> = None;
+            let mut pre: Option<(usize, EitherOrBoth<S, S>)> = None;
 
             loop {
                 match bw.next() {
@@ -268,7 +300,7 @@ impl<'l> HashDiff<&'l str> for &'l str {
                         }
                     }
                     Some((i, Both(o, n))) => {
-                        pre = Some((i, Both(o, n)));
+                        pre = Some((i, Both(o.clone(), n.clone())));
 
                         if o == n {
                             continue;
@@ -301,9 +333,7 @@ impl<'l> HashDiff<&'l str> for &'l str {
             let fw = once((fw_index, fw_item.clone())).chain(fw);
 
             // if eq segments are overlapping
-            if fw_fst_nq.0.as_ptr() >= bw_fst_nq.0.as_ptr()
-                || fw_fst_nq.1.as_ptr() >= bw_fst_nq.1.as_ptr()
-            {
+            if fw_fst_nq.0.pos() >= bw_fst_nq.0.pos() || fw_fst_nq.1.pos() >= bw_fst_nq.1.pos() {
                 let mut index_map = PerfectHasher32::default();
 
                 let mut changed_old = Vec::with_capacity(100);
@@ -323,21 +353,24 @@ impl<'l> HashDiff<&'l str> for &'l str {
             // new: "ab-bc"
 
             let changed = fw.take_while(|(i, e)| {
-                let mut not_greater = |a: &str, b: *const u8| match a.as_ptr().cmp(&b) {
-                    Ordering::Less => true,
-                    Ordering::Greater => false,
-                    Ordering::Equal => {
-                        if shorter_len.is_none() {
-                            shorter_len = Some(i + bw_index + 2)
-                        };
-                        false
+                let mut not_greater = |a: &S, b: S::Position| {
+                    let a_pos: S::Position = a.pos();
+                    match a_pos.cmp(&b) {
+                        Ordering::Less => true,
+                        Ordering::Greater => false,
+                        Ordering::Equal => {
+                            if shorter_len.is_none() {
+                                shorter_len = Some(i + bw_index + 2)
+                            };
+                            false
+                        }
                     }
                 };
 
                 let not_past_back_matched = e
                     .as_ref()
-                    .map_left(|a| not_greater(a, bw_fst_nq.0.as_ptr()))
-                    .map_right(|b| not_greater(b, bw_fst_nq.1.as_ptr()))
+                    .map_left(|a| not_greater(a, bw_fst_nq.0.pos()))
+                    .map_right(|b| not_greater(b, bw_fst_nq.1.pos()))
                     .reduce(|a, b| a && b);
 
                 if not_past_back_matched {
@@ -370,21 +403,24 @@ impl<'l> HashDiff<&'l str> for &'l str {
             // new: "ab-abc"
 
             let changed = bw.take_while(|(i, e)| {
-                let mut not_greater = |a: &str, b: *const u8| match a.as_ptr().cmp(&b) {
-                    Ordering::Less => true,
-                    Ordering::Greater => false,
-                    Ordering::Equal => {
-                        if shorter_len.is_none() {
-                            shorter_len = Some(i + fw_index + 2)
-                        };
-                        false
+                let mut not_greater = |a: &S, b: S::Position| {
+                    let a_pos: S::Position = a.pos();
+                    match a_pos.cmp(&b) {
+                        Ordering::Less => true,
+                        Ordering::Greater => false,
+                        Ordering::Equal => {
+                            if shorter_len.is_none() {
+                                shorter_len = Some(i + fw_index + 2)
+                            };
+                            false
+                        }
                     }
                 };
 
                 let not_past_back_matched = e
                     .as_ref()
-                    .map_left(|a| not_greater(a, fw_fst_nq.0.as_ptr()))
-                    .map_right(|b| not_greater(b, fw_fst_nq.1.as_ptr()))
+                    .map_left(|a| not_greater(a, fw_fst_nq.0.pos()))
+                    .map_right(|b| not_greater(b, fw_fst_nq.1.pos()))
                     .reduce(|a, b| a && b);
 
                 if not_past_back_matched {
