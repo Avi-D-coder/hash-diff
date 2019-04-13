@@ -455,17 +455,3 @@ where
         }
     }
 }
-
-trait FromEOB<L, R> {
-    fn into_either(self) -> Option<Either<L, R>>;
-}
-
-impl<L, R> FromEOB<L, R> for EitherOrBoth<L, R> {
-    fn into_either(self) -> Option<Either<L, R>> {
-        match self {
-            EitherOrBoth::Left(l) => Some(Either::Left(l)),
-            EitherOrBoth::Right(r) => Some(Either::Right(r)),
-            _ => None,
-        }
-    }
-}
