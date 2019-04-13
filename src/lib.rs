@@ -82,7 +82,7 @@ where
         let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + len].iter())
-            .map(|s| *s)
+            .cloned()
             .collect();
         changes.diff.push(Change::Equal {
             new,
@@ -98,7 +98,7 @@ where
         let old = hashed
             .index_map
             .contents(hashed.changed_old[old_index..old_index + len - 1].iter())
-            .map(|s| *s)
+            .cloned()
             .collect();
         changes.diff.push(Change::Delete {
             old,
@@ -113,7 +113,7 @@ where
         let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + new_len].iter())
-            .map(|s| *s)
+            .cloned()
             .collect();
         changes.diff.push(Change::Insert {
             old_index,
@@ -136,12 +136,12 @@ where
         let old = hashed
             .index_map
             .contents(hashed.changed_old[old_index..old_index + old_len].iter())
-            .map(|s| *s)
+            .cloned()
             .collect();
         let new = hashed
             .index_map
             .contents(hashed.changed_new[new_index..new_index + new_len].iter())
-            .map(|s| *s)
+            .cloned()
             .collect();
         changes.diff.push(Change::Replace {
             old,
@@ -256,12 +256,7 @@ where
             }
         };
 
-        if fw_eq_thru.is_none() {
-            // both old and new are empty
-            return None;
-        }
-
-        let (fw_index, fw_item) = fw_eq_thru.unwrap();
+        let (fw_index, fw_item) = fw_eq_thru?;
 
         if fw_item.is_just_left() {
             // return added overall fw.next
@@ -401,11 +396,11 @@ where
             }
 
             // Return diffed result
-            return Some(Hashed {
+            Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
-            });
+            })
         } else {
             let bw = once((bw_index, bw_item.clone())).chain(bw);
 
@@ -452,11 +447,11 @@ where
             changed_new.reverse();
             changed_old.reverse();
             // Return diffed result
-            return Some(Hashed {
+            Some(Hashed {
                 changed_old,
                 changed_new,
                 index_map,
-            });
+            })
         }
     }
 }
