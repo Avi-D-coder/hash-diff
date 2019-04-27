@@ -6,7 +6,6 @@ use std::hash::Hash;
 use std::iter::once;
 
 pub use diffs;
-use either::Either;
 use fasthash::murmur3::Murmur3Hasher_x86_32;
 use itertools::{EitherOrBoth, EitherOrBoth::*, Itertools};
 use perfect_hash::{Id, PerfectHasher32};
@@ -14,9 +13,9 @@ use perfect_hash::{Id, PerfectHasher32};
 type IndexMapping<T> = PerfectHasher32<T, Murmur3Hasher_x86_32>;
 
 pub struct Hashed<T> {
-    index_map: IndexMapping<T>,
-    changed_old: Vec<Id<u32>>,
-    changed_new: Vec<Id<u32>>,
+    pub index_map: IndexMapping<T>,
+    pub changed_old: Vec<Id<u32>>,
+    pub changed_new: Vec<Id<u32>>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +49,7 @@ pub enum Change<T> {
 
 #[derive(Debug, Clone)]
 struct Changes<T> {
-    diff: Vec<Change<T>>,
+    pub diff: Vec<Change<T>>,
 }
 
 impl<T> From<Vec<Change<T>>> for Changes<T> {
