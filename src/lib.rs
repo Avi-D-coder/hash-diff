@@ -257,7 +257,7 @@ where
 
         let (fw_index, fw_item) = fw_eq_thru?;
 
-        if fw_item.is_just_left() {
+        if fw_item.is_left() {
             // return added overall fw.next
             let mut index_map = PerfectHasher32::default();
 
@@ -273,7 +273,7 @@ where
                 changed_new,
                 index_map,
             });
-        } else if fw_item.is_just_right() {
+        } else if fw_item.is_right() {
             let mut index_map = PerfectHasher32::default();
 
             let changed_old = vec![];
